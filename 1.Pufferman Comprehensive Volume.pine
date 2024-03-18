@@ -1,0 +1,175 @@
+// Based on u/HurlTeaInTheSea v1.1 Realtive volume at time indicator. Cumulative Relative Volume Calculation Method.
+// Pufferman's Comprehensive Volume indicator  
+// Publication Version 1
+// Relative Volume
+// Real Relative Volume
+// Current Session Volume in numeric format
+// Current Session Average Volume in numeric format
+// Configurable Volume Moving Average
+// Above/below Average Volume Oscillator 
+
+//@version=5
+indicator("PM - Comprehensive Volume", overlay=false)
+
+// still works on higher timeframe but it's not a "day" average anymore, so throw error to avoid confusion
+if not (timeframe.isintraday or timeframe.isdaily) or timeframe.isseconds
+    runtime.error("RVol is only valid from minute to daily timeframe")
+
+// Inputs for Volume Indicator
+maPeriod = input.int(20, title="MA Period for Volume", minval=1)
+bullishColor = input(color.blue, title="Bullish Volume Color")
+bearishColor = input(color.yellow, title="Bearish Volume Color")
+
+// Inputs for RVol
+days = input.int(20, minval=1, title="MA for RVol")
+// Market Ticker for RRVol
+marketTicker = input.symbol("SPY", title="Market Ticker for RRVol")
+
+// Inputs for Table Settings
+tableBgColor = input(color.purple, title="RVOL Table BG Color", defval=color.new(#a008ec, 13))
+volTableBgColor = input(color.rgb(10, 132, 232), title="Vol Table BG Color", defval=color.new(#4343fa, 15))
+
+// Input for VOL/AVG Table Position Settings
+voltablePositionOption = input.string("bottom right", title="VOL Table Position", options=["top left", "top middlle", "top right", "middle left", "middle center", "middle right", "bottom left", "bottom middle", "bottom right"])
+voltablePosition = switch voltablePositionOption
+    "top left" => position.top_left
+    "top right" => position.top_right
+    "top middle" => position.top_center
+    "bottom left" => position.bottom_left
+    "bottom middle" => position.bottom_center
+    "bottom right" => position.bottom_right
+    "middle left" => position.middle_left
+    "middle center" => position.middle_center
+    "middle right" => position.middle_right
+
+// Input for RVOL/RRVOL Table Position Settings
+rvoltablePositionOption = input.string("bottom right", title="RVOL Table Position", options=["top left", "top middlle", "top right", "middle left", "middle center", "middle right", "bottom left", "bottom middle", "bottom right"])
+rvoltablePosition = switch rvoltablePositionOption
+    "top left" => position.top_left
+    "top right" => position.top_right
+    "top middle" => position.top_center
+    "bottom left" => position.bottom_left
+    "bottom middle" => position.bottom_center
+    "bottom right" => position.bottom_right
+    "middle left" => position.middle_left
+    "middle center" => position.middle_center
+    "middle right" => position.middle_right
+
+// Volume and Moving Average
+vol = volume
+avgVol = ta.sma(vol, maPeriod)
+
+// funciton to format volume
+formatVolume(vol) =>
+    var string volString = ""
+    if vol >= 1000000000
+        volString := str.tostring(vol / 1000000000, '###.##') + "B"
+    else if vol >= 1000000
+        volString := str.tostring(vol / 1000000, '###.##') + "M"
+    else if vol >= 1000
+        volString := str.tostring(vol / 1000, '###.##') + "K"
+    else
+        volString := str.tostring(vol, '###.##')
+    volString
+
+
+// Variables for RVol calculation
+var float cVol = 0.0
+var float spyCVol = 0.0
+var int[] newDayBars = array.new_int()
+
+// detect new session of day
+isNewDay() =>
+    t = time('D') // by default, time() follows symbol's session
+    na(t[1]) and not na(t) or t[1] < t
+
+if isNewDay()
+    // reset cumulative volume
+    cVol := 0
+    spyCVol := 0
+    
+    // save new bars in circular array of length days + 1
+    array.push(newDayBars, bar_index)
+    if (array.size(newDayBars) > days + 1)
+        array.shift(newDayBars)
+
+// cumulative volume
+cVol := cVol + volume
+
+// cumulative spy volume
+spyCVol := spyCVol + request.security(marketTicker, timeframe.period, volume, barmerge.gaps_off, barmerge.lookahead_off)
+
+
+// Calculate relative volume
+relativeVolume(cVolArray) =>
+    aVol = 0.0
+    len = array.size(newDayBars)
+    if len > 1 // Ensure there are at least two elements in the array
+        for i = 0 to len - 2
+            b1 = array.get(newDayBars, i)
+            b2 = array.get(newDayBars, i + 1)
+            t1 = time[bar_index - b1]
+            tLookup = timestamp(year(t1), month(t1), dayofmonth(t1), hour(time), minute(time), second(time))
+            int lo = math.max(0, b1) - 1
+            int hi = math.max(0, b2)
+            while 1 + lo < hi
+                int mi = lo + math.floor((hi - lo) / 2)
+                if (tLookup < time[bar_index - mi])
+                    hi := mi
+                else
+                    lo := mi
+            lo := lo < b1 ? hi : lo
+            bClosest = b1 < b2 ? lo : -1
+            aVol := aVol + (tLookup >= time[bar_index - bClosest] ? cVolArray[bar_index - bClosest] / days : 0)
+    rVol = aVol > 0 ? (cVolArray / aVol) * 100 : na
+    [rVol, aVol]
+
+[rVol, aVol] = relativeVolume(cVol)
+[spyRVol, spyAVol] = relativeVolume(spyCVol)
+rrVol = (rVol / spyRVol) * 100
+
+// Function to determine background color based on value
+bgColorFromValue(value) =>
+    var color bg = color.gray
+    if value > 1.01
+        bg := color.green
+    else if value >= 0.99 and value <= 1.01
+        bg := color.rgb(221, 255, 0)
+    else
+        bg := color.rgb(252, 190, 3)
+    bg
+
+//Debugging function to log values
+debugLog(msg) =>
+    if barstate.islast
+        label.new(bar_index, high, msg, xloc=xloc.bar_index, yloc=yloc.abovebar, style=label.style_label_left)
+
+// Create and populate tables for VOL, AVG, RVOL, and RRVOL
+if barstate.islast
+    // Volume and Average Volume Table
+    var table volTable = table.new(position=voltablePosition, columns=1, rows=2, bgcolor=volTableBgColor)
+    table.cell(volTable, 0, 0, "VOL: " + formatVolume(vol))
+    table.cell(volTable, 0, 1, "AVG: " + formatVolume(avgVol))
+
+    // RVOL and RRVOL Table - Adjust the y-location slightly if needed
+    var table rvolTable = table.new(position=rvoltablePosition, columns=1, rows=2, bgcolor=tableBgColor)
+    table.cell(rvolTable, 0, 0, "RVol: " + str.tostring(rVol, '###.##') + "%", bgcolor=bgColorFromValue(rVol / 100))
+    table.cell(rvolTable, 0, 1, "RRVol: " + str.tostring(rrVol, '###.##') + "%", bgcolor=bgColorFromValue(rrVol / 100))
+
+// Adding debugging statements
+//if barstate.islast
+//    var string debugText = "Debug Info:\n"
+//    debugText += "cVol: " + str.tostring(cVol) + "\n"
+//    debugText += "spyCVol: " + str.tostring(spyCVol) + "\n"
+//    debugText += "Array Size: " + str.tostring(array.size(newDayBars)) + "\n"
+//    debugText += "RVOL: " + str.tostring(rVol) + "\n"
+//    debugText += "SPY RVOL: " + str.tostring(spyRVol) + "\n"
+//    debugText += "RRVOL: " + str.tostring(rrVol) + "\n"
+//    label.new(bar_index, high, debugText, xloc=xloc.bar_index, yloc=yloc.abovebar, style=label.style_label_left)
+
+// Volume Indicator Plotting
+barColor = close >= open ? bullishColor : bearishColor
+plot(vol, title="Volume", color=barColor, style=plot.style_columns)
+plot(avgVol, title="Volume MA", color=color.green, linewidth=4)
+volDiffRatio = vol - avgVol
+plot(volDiffRatio, title="Volume - MA Difference", color=color.red, style=plot.style_stepline, linewidth=3)

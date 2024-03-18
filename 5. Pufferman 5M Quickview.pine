@@ -1,0 +1,310 @@
+// Pufferman's 5M Quickview
+// Based on and inspired by u/Civil-cucumber's market quickview indicator. 
+// Intended to be used with Pufferman's Daily Quickview indicator.
+
+//@version=5
+indicator("PM - 5M Quickview", overlay = true, max_bars_back=5000)
+// ======= Section 0 - Overall settings and Foundational References
+colorGreen = color.rgb(3, 94, 250)
+colorRed = color.rgb(255, 174, 0)
+colorYellow = color.rgb(208, 0, 255)
+colorGray = color.rgb(161, 161, 162)
+
+// auto ref market (only way to not have series string returned seemingly...)
+var usRef = "SPY"
+var cryptoRef = "BTCUSD"
+var germanRef = "DAX" // "TVC:SXXP"
+var defaultRef = "SPX500"
+stockPrefix = syminfo.prefix
+
+// Function to check if the current symbol is a market index
+isMarketIndex() =>
+    syminfo.ticker == "SPY" or syminfo.ticker == "SPX" or syminfo.ticker == "QQQ" or syminfo.ticker == "DIA" or syminfo.ticker == "IWM" or syminfo.ticker == "VIX" or syminfo.ticker == "FTSE" or syminfo.ticker == "DAX" or syminfo.ticker == "CAC" or syminfo.ticker == "STOXX" or syminfo.ticker == "IBEX" or syminfo.ticker == "N225" or syminfo.ticker == "HSI" or syminfo.ticker == "SSEC" or syminfo.ticker == "ASX" or syminfo.ticker == "KOSPI" or syminfo.ticker == "BSESN" or syminfo.ticker == "BVSP" or syminfo.ticker == "TASI" or syminfo.ticker == "JSE" or syminfo.ticker == "MXX" or syminfo.ticker == "GLD" or syminfo.ticker == "SLV" or syminfo.ticker == "USO" or syminfo.ticker == "BTCUSD" or syminfo.ticker == "ETHUSD"
+
+// Function to determine the reference market
+getRefMarket() =>
+    if str.contains(stockPrefix, "NYSE") or str.contains(stockPrefix, "NASDAQ") or str.contains(stockPrefix, "BATS") or str.contains(stockPrefix, "AMEX")
+        usRef
+    else if str.contains(stockPrefix, "COIN")
+        cryptoRef
+    else if str.contains(stockPrefix, "XETR") or str.contains(stockPrefix, "GETTEX") or str.contains(stockPrefix, "TRADEGATE") or str.contains(stockPrefix, "FWB")
+        germanRef
+    else
+        defaultRef
+
+// Determine refMarket based on whether the current ticker is a market index
+var refMarket = isMarketIndex() ? syminfo.ticker : getRefMarket()
+
+//retrieve market info
+marketOpen = request.security(refMarket, "5", open)
+marketHigh = request.security(refMarket, "5", high)
+marketLow = request.security(refMarket, "5", low)
+marketClose = request.security(refMarket, "5", close)
+
+
+// ======= II
+// Table Comparison Section - Stock and Market
+//Definitions
+//1
+marketDailyClose = request.security(refMarket, timeframe="5", expression=close, lookahead=barmerge.lookahead_on)
+marketYesterdayDailyClose = request.security(refMarket, timeframe="5", expression=close[1], lookahead=barmerge.lookahead_on)
+stockDailyClose = request.security(syminfo.tickerid, timeframe="5", expression=close, lookahead=barmerge.lookahead_on)
+stockYesterdayDailyClose = request.security(syminfo.tickerid, timeframe="5", expression=close[1], lookahead=barmerge.lookahead_on)
+//2
+marketDailyOpen = request.security(refMarket, timeframe="5", expression=open, lookahead=barmerge.lookahead_on)
+stockDailyOpen = request.security(syminfo.tickerid, timeframe="5", expression=open, lookahead=barmerge.lookahead_on)
+//3
+marketvwap = request.security(refMarket, timeframe="5", expression=ta.vwap(hlc3), lookahead=barmerge.lookahead_on)
+stockvwap = request.security(syminfo.tickerid, timeframe="5", expression=ta.vwap(hlc3), lookahead=barmerge.lookahead_on)
+//4
+// Calculate EMAs for the reference market
+marketEma3 = request.security(refMarket, "5", ta.ema(close, 3), lookahead=barmerge.lookahead_on)
+marketEma8 = request.security(refMarket, "5", ta.ema(close, 8), lookahead=barmerge.lookahead_on)
+// Calculate EMAs for the current symbol
+stockEma3 = request.security(syminfo.tickerid, "5", ta.ema(close, 3), lookahead=barmerge.lookahead_on)
+stockEma8 = request.security(syminfo.tickerid, "5", ta.ema(close, 8), lookahead=barmerge.lookahead_on)
+//5
+marketout_yesterdayHigh = request.security(refMarket, timeframe="5", expression=high[1], lookahead=barmerge.lookahead_on)
+marketout_yesterdayLow = request.security(refMarket, timeframe="5", expression=low[1], lookahead=barmerge.lookahead_on)
+stockout_yesterdayHigh = request.security(syminfo.tickerid, timeframe="5", expression=high[1], lookahead=barmerge.lookahead_on)
+stockout_yesterdayLow = request.security(syminfo.tickerid, timeframe="5", expression=low[1], lookahead=barmerge.lookahead_on)
+
+//6
+markethaMarketClose = request.security(ticker.heikinashi(refMarket), "5", close, lookahead=barmerge.lookahead_on)
+markethaMarketOpen = request.security(ticker.heikinashi(refMarket), "5", open, lookahead=barmerge.lookahead_on)
+markethaMarketHigh = request.security(ticker.heikinashi(refMarket), "5", high, lookahead=barmerge.lookahead_on)
+markethaMarketLow = request.security(ticker.heikinashi(refMarket), "5", low, lookahead=barmerge.lookahead_on)
+marketyHaMarketClose = request.security(ticker.heikinashi(refMarket), "5", close[1], lookahead=barmerge.lookahead_on)
+marketyHaMarketOpen = request.security(ticker.heikinashi(refMarket), "5", open[1], lookahead=barmerge.lookahead_on)
+marketyHaMarketHigh = request.security(ticker.heikinashi(refMarket), "5", high[1], lookahead=barmerge.lookahead_on)
+marketyHaMarketLow = request.security(ticker.heikinashi(refMarket), "5", low[1], lookahead=barmerge.lookahead_on)
+stockhaMarketClose = request.security(ticker.heikinashi(syminfo.tickerid), "5", close, lookahead=barmerge.lookahead_on)
+stockhaMarketOpen = request.security(ticker.heikinashi(syminfo.tickerid), "5", open, lookahead=barmerge.lookahead_on)
+stockhaMarketHigh = request.security(ticker.heikinashi(syminfo.tickerid), "5", high, lookahead=barmerge.lookahead_on)
+stockhaMarketLow = request.security(ticker.heikinashi(syminfo.tickerid), "5", low, lookahead=barmerge.lookahead_on)
+stockyHaMarketClose = request.security(ticker.heikinashi(syminfo.tickerid), "5", close[1], lookahead=barmerge.lookahead_on)
+stockyHaMarketOpen = request.security(ticker.heikinashi(syminfo.tickerid), "5", open[1], lookahead=barmerge.lookahead_on)
+stockyHaMarketHigh = request.security(ticker.heikinashi(syminfo.tickerid), "5", high[1], lookahead=barmerge.lookahead_on)
+stockyHaMarketLow = request.security(ticker.heikinashi(syminfo.tickerid), "5", low[1], lookahead=barmerge.lookahead_on)
+
+
+//Logic
+// 1. Market Change to yesterday:
+marketchangeBullish = marketDailyClose > marketYesterdayDailyClose
+marketchangeBearish = marketDailyClose < marketYesterdayDailyClose
+// 1b. Stock Change to yesterday:
+stockchangeBullish = stockDailyClose > stockYesterdayDailyClose
+stockchangeBearish = stockDailyClose < stockYesterdayDailyClose
+// 2. Market Change since Open:
+marketopenChangeBullish = marketDailyClose > marketDailyOpen
+marketopenChangeBearish = marketDailyClose < marketDailyOpen
+// 2b. Market Change since Open:
+stockopenChangeBullish = stockDailyClose > stockDailyOpen
+stockopenChangeBearish = stockDailyClose < stockDailyOpen
+// 3. Market VWAP:
+marketvwapBullish = marketvwap < marketDailyClose
+marketvwapBearish = marketvwap > marketDailyClose
+// 3b. Stock VWAP:
+stockvwapBullish = stockvwap < stockDailyClose
+stockvwapBearish = stockvwap > stockDailyClose
+
+// 4. ===== Vwap MA Stack
+// Market Stack conditions based on the reference market
+MarketisBullStack = marketClose > marketEma3 and marketEma3 > marketEma8 and marketEma8 > marketvwap
+MarketisBearStack = marketClose < marketEma3 and marketEma3 < marketEma8 and marketEma8 < marketvwap
+// Determine Market stack state
+var string MarketstackState = ""
+var color MarketstackColor = na
+// market stack
+if MarketisBullStack
+    MarketstackState := "Bull Stack"
+    MarketstackColor := colorGreen
+else if MarketisBearStack
+    MarketstackState := "Bear Stack"
+    MarketstackColor := colorRed
+else
+    MarketstackState := "No Stack"
+    MarketstackColor := colorYellow
+
+//4b. Stock Stack conditions based on the reference market
+stockisBullStack = stockDailyClose > stockEma3 and stockEma3 > stockEma8 and stockEma8 > stockvwap
+stockisBearStack = stockDailyClose < stockEma3 and stockEma3 < stockEma8 and stockEma8 < stockvwap
+// Determine Stock stack state
+var string stockstackState = ""
+var color stockstackColor = na
+//stock stack
+if stockisBullStack
+    stockstackState := "Bull Stack"
+    stockstackColor := colorGreen
+else if stockisBearStack
+    stockstackState := "Bear Stack"
+    stockstackColor := colorRed
+else
+    stockstackState := "No Stack"
+    stockstackColor := colorYellow
+
+//=====================
+
+// 5. Market Yesterday's Range - Market:
+marketyRangeBullish = marketDailyClose > marketout_yesterdayHigh
+marketyRangeBearish = marketDailyClose < marketout_yesterdayLow
+// 5b. Stock Yesterday's Range - Market:
+stockyRangeBullish = stockDailyClose > stockout_yesterdayHigh
+stockyRangeBearish = stockDailyClose < stockout_yesterdayLow
+
+// 6. Two-day HA candles - Market:
+markethaBullish = markethaMarketClose > markethaMarketOpen and markethaMarketLow >= markethaMarketOpen and markethaMarketHigh > markethaMarketClose
+markethaBearish = markethaMarketClose < markethaMarketOpen and markethaMarketHigh <= markethaMarketOpen and markethaMarketLow < markethaMarketClose
+marketyHaBullish = marketyHaMarketClose > marketyHaMarketOpen and marketyHaMarketLow >= marketyHaMarketOpen and marketyHaMarketHigh > marketyHaMarketClose
+marketyHaBearish = marketyHaMarketClose < marketyHaMarketOpen and marketyHaMarketHigh <= marketyHaMarketOpen and marketyHaMarketLow < marketyHaMarketClose
+markettwoDayHaBullish = markethaBullish and marketyHaBullish
+markettwoDayHaBearish = markethaBearish and marketyHaBearish
+
+// 6b. Two-day HA candles - Stock:
+stockhaBullish = stockhaMarketClose > stockhaMarketOpen and stockhaMarketLow >= stockhaMarketOpen and stockhaMarketHigh > stockhaMarketClose
+stockhaBearish = stockhaMarketClose < stockhaMarketOpen and stockhaMarketHigh <= stockhaMarketOpen and stockhaMarketLow < stockhaMarketClose
+stockyHaBullish = stockyHaMarketClose > stockyHaMarketOpen and stockyHaMarketLow >= stockyHaMarketOpen and stockyHaMarketHigh > stockyHaMarketClose
+stockyHaBearish = stockyHaMarketClose < stockyHaMarketOpen and stockyHaMarketHigh <= stockyHaMarketOpen and stockyHaMarketLow < stockyHaMarketClose
+stocktwoDayHaBullish = stockhaBullish and stockyHaBullish
+stocktwoDayHaBearish = stockhaBearish and stockyHaBearish
+
+//=======HA Candle Accel/Deccel
+//RS/RW Stack
+//Code for determining 
+
+
+// III. Tally for Point Based Trend indicator. 
+
+// ===== 1. Market Tally  
+marketbullPoints = 0
+marketbearPoints = 0
+marketminTrendPoints = 4
+
+if marketchangeBullish
+    marketbullPoints := marketbullPoints + 1
+else if marketchangeBearish
+    marketbearPoints := marketbearPoints + 1
+
+if marketopenChangeBullish
+    marketbullPoints := marketbullPoints + 1
+else if marketopenChangeBearish
+    marketbearPoints := marketbearPoints + 1
+
+if marketvwapBullish
+    marketbullPoints := marketbullPoints + 1
+else if marketvwapBearish
+    marketbearPoints := marketbearPoints + 1
+
+if MarketisBullStack
+    marketbullPoints := marketbullPoints + 1
+else if MarketisBearStack
+    marketbearPoints := marketbearPoints + 1
+
+if marketyRangeBullish
+    marketbullPoints := marketbullPoints + 1
+else if marketyRangeBearish
+    marketbearPoints := marketbearPoints + 1
+
+if markettwoDayHaBullish
+    marketbullPoints := marketbullPoints + 1
+else if markettwoDayHaBearish
+    marketbearPoints := marketbearPoints + 1
+
+markettotalBullish = marketbullPoints >= marketminTrendPoints
+markettotalBearish = marketbearPoints >= marketminTrendPoints
+marketcellBgColor = markettotalBullish ? colorGreen : markettotalBearish ? colorRed : colorYellow
+
+//1b. Stock Tally
+
+stockbullPoints = 0
+stockbearPoints = 0
+stockminTrendPoints = 4
+
+if stockchangeBullish
+    stockbullPoints := stockbullPoints + 1
+else if stockchangeBearish
+    stockbearPoints := stockbearPoints + 1
+
+if stockopenChangeBullish
+    stockbullPoints := stockbullPoints + 1
+else if stockopenChangeBearish
+    stockbearPoints := stockbearPoints + 1
+
+if stockvwapBullish
+    stockbullPoints := stockbullPoints + 1
+else if stockvwapBearish
+    stockbearPoints := stockbearPoints + 1
+
+if stockisBullStack
+    stockbullPoints := stockbullPoints + 1
+else if stockisBearStack
+    stockbearPoints := stockbearPoints + 1
+
+if stockyRangeBullish
+    stockbullPoints := stockbullPoints + 1
+else if stockyRangeBearish
+    stockbearPoints := stockbearPoints + 1
+
+if stocktwoDayHaBullish
+    stockbullPoints := stockbullPoints + 1
+else if stocktwoDayHaBearish
+    stockbearPoints := stockbearPoints + 1
+
+stocktotalBullish = stockbullPoints >= stockminTrendPoints
+stocktotalBearish = stockbearPoints >= stockminTrendPoints
+stockcellBgColor = stocktotalBullish ? colorGreen : stocktotalBearish ? colorRed : colorYellow
+//==== IV. master tables
+
+// Function to fill table cells
+// Input for Table Position Settings
+tablePositionOption = input.string("bottom right", title="Table Position", options=["top left", "top middle", "top right", "middle left", "middle center", "middle right", "bottom left", "bottom middle", "bottom right"])
+
+// Determine the position based on the input
+tablePosition = switch tablePositionOption
+    "top left" => position.top_left
+    "top middle" => position.top_center
+    "top right" => position.top_right
+    "middle left" => position.middle_left
+    "middle center" => position.middle_center
+    "middle right" => position.middle_right
+    "bottom left" => position.bottom_left
+    "bottom middle" => position.bottom_center
+    "bottom right" => position.bottom_right
+
+// Create the table with the selected position
+var overviewId = table.new(tablePosition, columns=2, rows=10)
+//Market Column
+fillTableColumn(col) =>
+    if col == 1
+        // Market data calculation for reference market
+        table.cell(overviewId, column=1, row=0, text=refMarket, bgcolor=color.rgb(152, 153, 156), text_size=size.small)
+        table.cell(overviewId, column=1, row=1, text=markettotalBullish ? "BULLISH" : markettotalBearish ? "BEARISH" : "CHOPPY\nSet alerts", text_color=color.white, bgcolor=marketcellBgColor, text_size=size.small) 
+		table.cell(overviewId, column=1, row=2, text="Change\nsince\nYesterday", text_color=color.white, bgcolor=marketchangeBullish ? colorGreen : marketchangeBearish ? colorRed : colorYellow, text_size=size.small)
+        table.cell(overviewId, column=1, row=3, text="Change\nsince\nOpen", text_color=color.white, bgcolor=marketopenChangeBullish ? colorGreen : marketopenChangeBearish ? colorRed : colorYellow, text_size=size.small)
+		table.cell(overviewId, column=1, row=4, text="VWAP\n" + str.tostring(math.round(marketvwap)), text_color=color.white, bgcolor=marketvwapBullish ? colorGreen : marketvwapBearish ? colorRed : colorYellow, text_size=size.small)
+	    table.cell(overviewId, column=1, row=5, text=MarketstackState, text_color=color.white, bgcolor=MarketstackColor, text_size=size.small)
+    	table.cell(overviewId, column=1, row=6, text=marketyRangeBullish ? "Broke\nYHigh" : marketyRangeBearish ? "Broke\nYLow" : "Within\nYRange", text_color=color.white, bgcolor=marketyRangeBullish ? colorGreen : marketyRangeBearish ? colorRed : colorYellow, text_size=size.small)
+		table.cell(overviewId, column=1, row=7, text="Last 2 HA\ncandles", text_color=color.white, bgcolor=markettwoDayHaBullish ? colorGreen : markettwoDayHaBearish ? colorRed : colorYellow, text_size=size.small)
+    //  place holder for HA acceleration/deceleration     
+    //  RS/RW Stack
+ 
+//Stock Column
+	if col == 0
+        stockDataClose = close
+        table.cell(overviewId, column=0, row=0, text="5M", bgcolor=color.rgb(148, 150, 155), text_size=size.small)
+        table.cell(overviewId, column=0, row=1, text=stocktotalBullish ? "BULLISH" : stocktotalBearish ? "BEARISH" : "CHOPPY\nSet alerts", text_color=color.white, bgcolor=stockcellBgColor, text_size=size.small)
+        table.cell(overviewId, column=0, row=2, text="Change\nsince\nYesterday", text_color=color.white, bgcolor=stockchangeBullish ? colorGreen : stockchangeBearish ? colorRed : colorYellow, text_size=size.small)
+        table.cell(overviewId, column=0, row=3, text="Change\nsince\nOpen", text_color=color.white, bgcolor=stockopenChangeBullish ? colorGreen : stockopenChangeBearish ? colorRed : colorYellow, text_size=size.small)
+		table.cell(overviewId, column=0, row=4, text="VWAP\n" + str.tostring(math.round(stockvwap)), text_color=color.white, bgcolor=stockvwapBullish ? colorGreen : stockvwapBearish ? colorRed : colorYellow, text_size=size.small)
+	    table.cell(overviewId, column=0, row=5, text=stockstackState, text_color=color.white, bgcolor=stockstackColor, text_size=size.small)
+		table.cell(overviewId, column=0, row=6, text=stockyRangeBullish ? "Broke\nYHigh" : stockyRangeBearish ? "Broke\nYLow" : "Within\nYRange", text_color=color.white, bgcolor=stockyRangeBullish ? colorGreen : stockyRangeBearish ? colorRed : colorYellow, text_size=size.small)
+		table.cell(overviewId, column=0, row=7, text="Last 2 HA\ncandles", text_color=color.white, bgcolor=stocktwoDayHaBullish ? colorGreen : stocktwoDayHaBearish ? colorRed : colorYellow, text_size=size.small)
+    //  place holder for HA acceleration/deceleration 
+    //  RS/RW Stack
+
+// Decide which columns to fill based on whether the current symbol is likely a market index
+if isMarketIndex()
+    fillTableColumn(1) // Fill only Market column
+else
+    fillTableColumn(0) // Fill Stock column
+    fillTableColumn(1) // Fill Market column

@@ -1,0 +1,41 @@
+// Based on lilsgymdan's TC2000 coloring scheme.
+// appears to be working correctly with offset at 0.
+//@version=5
+indicator("PM - HA Color Overlay", overlay=true)
+
+// User-adjustable colors for HA candle patterns
+flatTopColor = input.color(color.red, "Flat Top", group="HA Candle Color Overlay")
+flatBottomColor = input.color(color.green, "Flat Bottom", group="HA Candle Color Overlay")
+
+// Calculate Heikin-Ashi values
+var float haOpen = na
+haClose = (open + high + low + close) / 4
+haOpen := na(haOpen[1]) ? (open + close) / 2 : (haOpen[1] + haClose[1]) / 2
+haHigh = math.max(high, haOpen, haClose)
+haLow = math.min(low, haOpen, haClose)
+
+// Determine the nature of HA and regular candles (bullish or bearish)
+haBullish = haClose > haOpen
+regularBullish = close > open
+haBearish = haClose < haOpen
+regularBearish = close < open
+
+// Ensure directional agreement between HA and regular candles
+bullishAgreement = haBullish and regularBullish
+bearishAgreement = haBearish and regularBearish
+
+// Refine identification of flat top (bearish) and flat bottom (bullish) HA candles with directional agreement
+isFlatTop = haHigh == haOpen and haClose < haOpen and bearishAgreement
+isFlatBottom = haLow == haOpen and haClose > haOpen and bullishAgreement
+
+// Apply colors based on refined HA candle conditions and directional agreement
+color candleColor = na
+if isFlatTop
+    candleColor := flatTopColor
+else if isFlatBottom
+    candleColor := flatBottomColor
+
+barcolor(candleColor, offset=-0)
+
+// Plot HA candles for comparison and trouble shooting
+// plotcandle(haOpen, haHigh, haLow, haClose, title="Heikin-Ashi Candle", color=haClose > haOpen ? color.new(#4caf4f, 0) : color.new(#ff5252, 0))

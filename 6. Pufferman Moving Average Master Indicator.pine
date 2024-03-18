@@ -1,0 +1,179 @@
+// Pufferman's Moving Average Master Indicator
+// Based on and inspired by u/Civil-cucumber's market quickview indicator. Inspired to show daily values on the intraday timeframe.
+// Intended to be used with Pufferman's Daily Quickview indicator.
+
+
+//@version=5
+indicator("Master Chart Overlay Daily", overlay=true)
+//1. Daily and 5M consistent
+//1a. Algo Volume Candles - Daily and 5M 
+// Calculate moving average of volume
+avgVolume = ta.sma(volume, 20)
+// Function to classify volume and color of the day
+classifyVolumeAndColor(dayVolume, dayOpen, dayClose, prevClose) =>
+    isAboveAvg = dayVolume > avgVolume*1.05
+//Plot Algo volume results
+plotshape(series=volume > avgVolume, style=shape.square, location=location.abovebar, color=color.white, size=size.tiny)
+
+
+
+//2. EMA VWAP - Daily and 5M
+
+// Display settings
+displaySma = input(true, title="Display SMAs")
+displayEma = input(true, title="Display EMSs")
+restrictIndicatorsRange = input(300, title="Show Last N Bars Only")
+
+
+
+// 2x EMas - User-defined settings for EMA periods
+ema1Period = input(3, title="EMA 1 Period")
+ema2Period = input(8, title="EMA 2 Period")
+
+// Calculating EMAs with user-defined periods
+ema1 = ta.ema(close, ema1Period)
+ema2 = ta.ema(close, ema2Period)
+
+// Plotting EMAs
+plot(ema1, color=color.rgb(253, 143, 0), title="EMA 1", linewidth=2)
+plot(ema2, color=color.rgb(3, 109, 247), title="EMA 2", linewidth=2)
+
+
+// 2b. 3x SMAs - displayed on daily and higher only. daily value displayed on less than daily time frames. 
+// User-defined settings for SMA periods
+sma1Period = input(50, title="SMA 1")
+sma2Period = input(100, title="SMA 2")
+sma3Period = input(200, title="SMA 3")
+// Function to calculate SMA on daily timeframe
+getDailySMA(period) =>
+    request.security(syminfo.tickerid, "D", ta.sma(close, period))
+// Calculating SMAs
+out_sma1 = getDailySMA(sma1Period)
+out_sma2 = getDailySMA(sma2Period)
+out_sma3 = getDailySMA(sma3Period)
+// Colors for SMAs
+sma1Col = color.new(color.yellow, 0)
+sma2Col = color.new(color.green, 0)
+sma3Col = color.new(color.purple, 0)
+// Determine if current timeframe is daily or higher
+isDailyOrHigher = timeframe.isdaily or timeframe.isweekly or timeframe.ismonthly
+// Plotting 3 SMAs - show daily on 5M chart 
+plot(isDailyOrHigher ? ta.sma(close, sma1Period) : out_sma1, color=sma1Col, title="SMA 1", linewidth=3)
+plot(isDailyOrHigher ? ta.sma(close, sma2Period) : out_sma2, color=sma2Col, title="SMA 2", linewidth=3)
+plot(isDailyOrHigher ? ta.sma(close, sma3Period) : out_sma3, color=sma3Col, title="SMA 3", linewidth=4)
+
+
+// 2c. VWAP - Display on less than daily timeliness.
+// Input to toggle VWAP visibility on daily or above timeframes
+showVwapOnDailyOrAbove = input.bool(true, "Show VWAP on Daily or Above Timeframes")
+
+// Calculate a custom HLC3 (average of high, low, and close)
+myHLC3 = (high + low + close) / 3
+// Calculate VWAP
+vwapValue = ta.vwap(myHLC3)
+
+// Check if the current timeframe is intraday
+isIntradayTimeframe = timeframe.isintraday
+// Logic to decide whether to plot VWAP based on timeframe and user input
+shouldPlotVwap = isIntradayTimeframe or (not isIntradayTimeframe and showVwapOnDailyOrAbove)
+// Plot VWAP based on the condition
+plot(shouldPlotVwap ? vwapValue : na, color=color.rgb(253, 119, 119), title="VWAP", linewidth=2, style=plot.style_circles)
+
+//3. former day high + low:
+// Define the resolution for daily data
+res = "D"
+// Fetch the previous day's high and low
+out_yesterdayHigh = request.security(syminfo.tickerid, res, high[1], lookahead = barmerge.lookahead_on)
+out_yesterdayLow = request.security(syminfo.tickerid, res, low[1], lookahead = barmerge.lookahead_on)
+// Colors for previous day's high and low
+yesterdayHighColor = color.rgb(4, 253, 215)
+yesterdayLowColor = color.rgb(247, 6, 147)
+// Check if the current timeframe is below daily
+isBelowDaily = not timeframe.isdaily
+// Plot previous day's high and low only on timeframes below daily
+plot(isBelowDaily ? out_yesterdayHigh : na, color = yesterdayHighColor, title='Yesterday High', style = plot.style_line, linewidth = 2)
+plot(isBelowDaily ? out_yesterdayLow : na, color = yesterdayLowColor, title='Yesterday Low', style = plot.style_line, linewidth = 2)
+
+
+//4. HA candle overlay - reversal candle marked here by not marking
+// HA candle settings
+haRange = input.int(defval=3, title="HA candles range", group="HA candles")
+haUpColor = color.rgb(0, 153, 130)
+haDownColor = color.rgb(251, 46, 70)
+
+// Custom offset settings for each price range
+offset_0_0_5 = input.float(defval=0.5, title="Offset for Price 0 - 0.5", group="Custom Offsets")
+offset_0_6_3 = input.float(defval=1.5, title="Offset for Price 0.6 - 3", group="Custom Offsets")
+offset_3_1_5 = input.float(defval=2.5, title="Offset for Price 3.1 - 5", group="Custom Offsets")
+offset_5_1_10 = input.float(defval=4, title="Offset for Price 5.1 - 10", group="Custom Offsets")
+offset_10_1_50 = input.float(defval=5.5, title="Offset for Price 10.1 - 50", group="Custom Offsets")
+offset_51_175 = input.float(defval=9.5, title="Offset for Price 51 - 175", group="Custom Offsets")
+offset_176_300 = input.float(defval=15, title="Offset for Price 176 - 300", group="Custom Offsets")
+offset_301_450 = input.float(defval=21, title="Offset for Price 301 - 450", group="Custom Offsets")
+offset_451_600 = input.float(defval=27, title="Offset for Price 451 - 600", group="Custom Offsets")
+offset_601_800 = input.float(defval=35, title="Offset for Price 601 - 800", group="Custom Offsets")
+offset_801_1000 = input.float(defval=42, title="Offset for Price 801 - 1000", group="Custom Offsets")
+offset_1001_1300 = input.float(defval=51, title="Offset for Price 1001 - 1300", group="Custom Offsets")
+offset_1301_over = input.float(defval=58, title="Offset for Price 1301 and over", group="Custom Offsets")
+
+// Function to determine the appropriate offset based on the current price
+calculateOffsetForPrice(price) =>
+    var float offset = 0.0
+    if price <= 0.5
+        offset := offset_0_0_5
+    else if price <= 3
+        offset := offset_0_6_3
+    else if price <= 5
+        offset := offset_3_1_5
+    else if price <= 10
+        offset := offset_5_1_10
+    else if price <= 50
+        offset := offset_10_1_50
+    else if price <= 175
+        offset := offset_51_175
+    else if price <= 300
+        offset := offset_176_300
+    else if price <= 450
+        offset := offset_301_450
+    else if price <= 600
+        offset := offset_451_600
+    else if price <= 800
+        offset := offset_601_800
+    else if price <= 1000
+        offset := offset_801_1000
+    else if price <= 1300
+        offset := offset_1001_1300
+    else
+        offset := offset_1301_over
+    offset
+
+// Get the current price
+currentPrice = close
+
+// Calculate the appropriate offset
+groupOffset = calculateOffsetForPrice(currentPrice)
+
+// Manually calculate Heikin-Ashi values for the current chart
+haClose = (open + high + low + close) / 4
+var float haOpen = na
+if na(haOpen[1])
+    haOpen := (open + close) / 2
+else
+    haOpen := (haOpen[1] + haClose[1]) / 2
+haHigh = math.max(high, haOpen, haClose)
+haLow = math.min(low, haOpen, haClose)
+
+// Apply the group offset to Heikin-Ashi values
+haOpenOffset = haOpen + groupOffset
+haHighOffset = haHigh + groupOffset
+haLowOffset = haLow + groupOffset
+haCloseOffset = haClose + groupOffset
+
+// Determine HA candle color (same color for body, wick, and border)
+haColor = haCloseOffset >= haOpenOffset ? haUpColor : haDownColor
+
+// Plot HA Candles with group offset
+plotcandle(haOpenOffset, haHighOffset, haLowOffset, haCloseOffset, "HA Candle", color=haColor, wickcolor=haColor, bordercolor=haColor, show_last=haRange)
+
+
+

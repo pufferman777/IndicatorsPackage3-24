@@ -1,0 +1,105 @@
+//Milestone 1 - key bars identified. half body line drawn.
+// sweet spot for settings are set to default values. 
+// took out label marking the most recent key bar- the half body lines do that now. 
+// purple markers sitll present for identifying key bars incase body color change isn't enough. 
+// just trying to get the settings windows to allow adjustment of line type right for this indicator
+// still working on it. 
+// seems that the 5M is showing the daily without making key bar identification weird. 
+// M5 Shows its own Key Bar support. But it seems the daily key bar support is not being show in the 5M timeline. 
+// ok, very good, line is shown on the 5M chart. albiet a little weird. 
+// revised the ATR calculations to calculate based on open close (body size) instead of high and low (daily range). 
+// no longer have debugging texts to show the status of the candle. (what conditions are met and what aren't)
+// corected the display of the daily key bar line on the 5M if the current day is a kay bar. Shows the most recent key bar line now (including current day)
+
+// Pufferman's Keybars
+
+//@version=5
+indicator("PM - Key Bars", overlay=true)
+
+
+// User-defined settings
+atrLength = input.int(10, title="ATR Length", minval=1)
+atrMultiplier = input.float(.85, title="ATR Multiplier", minval=0.1)
+volumeLength = input.int(10, title="Volume Average Length", minval=1)
+bodySizePercentage = input.float(.55, title="Minimum Body Size Percentage", minval=0, maxval=100)
+lineLength = input.int(20, title="Line Length", minval=1)
+lineColor = input(color.blue, title="Line Color")
+lineWidth = input.int(1, title="Line Width", minval=1)
+
+// Calculating ATR, Volume Average, and Candle Body Size
+atr = ta.atr(atrLength)
+volumeAvg = ta.sma(volume, volumeLength)
+bodySize = math.abs(close - open)  // Size of the candle body
+totalRange = high - low  // Total range from high to low
+
+// Redefining barRange to represent the size of the candle body
+barRange = bodySize
+
+// Key Bar Condition: Compare the body size (barRange) with the ATR
+isKeyBar = (barRange >= atrMultiplier * atr) and 
+           (bodySize / totalRange >= bodySizePercentage) and 
+           (volume > volumeAvg)
+
+// Fetch the current, last, and second last daily key bars and their mid prices
+currentDailyKeyBar = request.security(syminfo.tickerid, "D", isKeyBar, lookahead=barmerge.lookahead_on)
+lastDailyKeyBar = request.security(syminfo.tickerid, "D", isKeyBar[1], lookahead=barmerge.lookahead_on)
+secondLastDailyKeyBar = request.security(syminfo.tickerid, "D", isKeyBar[2], lookahead=barmerge.lookahead_on)
+currentDailyMidPrice = request.security(syminfo.tickerid, "D", (open + close) / 2, lookahead=barmerge.lookahead_on)
+lastDailyMidPrice = request.security(syminfo.tickerid, "D", (open[1] + close[1]) / 2, lookahead=barmerge.lookahead_on)
+secondLastDailyMidPrice = request.security(syminfo.tickerid, "D", (open[2] + close[2]) / 2, lookahead=barmerge.lookahead_on)
+
+
+
+// Identify if the chart is a daily or higher timeframe
+isDailyOrHigher = (timeframe.isdaily or timeframe.isweekly or timeframe.ismonthly)
+
+// Determining Bullish or Bearish Key Bar
+isBullishKeyBar = isKeyBar and close > open
+isBearishKeyBar = isKeyBar and close < open
+
+// Plotting
+plotshape(isKeyBar, style=shape.square, location=location.belowbar, color=color.purple, size=size.small)
+
+// Bar Coloring Logic
+var color barColor = na
+if isBullishKeyBar
+    barColor := color.green
+else if isBearishKeyBar
+    barColor := color.red
+else
+    barColor := na
+
+barcolor(barColor)
+
+
+// Handling for lower than daily timeframes
+if not isDailyOrHigher
+    // Plot lines for the current, last two daily key bars on the sub-daily chart
+    if currentDailyKeyBar
+        line.new(x1=bar_index[1], y1=currentDailyMidPrice, x2=bar_index, y2=currentDailyMidPrice, width=lineWidth, color=lineColor, extend=extend.right)
+    if lastDailyKeyBar
+        line.new(x1=bar_index[1], y1=lastDailyMidPrice, x2=bar_index, y2=lastDailyMidPrice, width=lineWidth, color=lineColor, extend=extend.right)
+    if secondLastDailyKeyBar
+        line.new(x1=bar_index[1], y1=secondLastDailyMidPrice, x2=bar_index, y2=secondLastDailyMidPrice, width=lineWidth, color=lineColor, extend=extend.right)
+
+// Alerts
+alertcondition(isKeyBar, title="Key Bar Alert", message="A Key Bar has been detected.")
+
+// Managing Lines for the Most Recent Two Key Bars
+var line line1 = na
+var line line2 = na
+
+if isKeyBar
+    // Delete the oldest line
+    if not na(line1)
+        line.delete(line1)
+    // Move the second line to the first slot and create a new line
+    line1 := line2
+    float midPrice = (open + close) / 2
+    line2 := line.new(bar_index, midPrice, bar_index + lineLength, midPrice, width=lineWidth, color=lineColor, extend=extend.none)
+
+// Extend the lines forward
+if not na(line1)
+    line.set_x2(line1, bar_index + lineLength)
+if not na(line2)
+    line.set_x2(line2, bar_index + lineLength)
